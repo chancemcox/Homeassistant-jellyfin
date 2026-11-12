@@ -1,0 +1,60 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Jellyfin",
+        "description": "Enter your Jellyfin server URL and an API key. Create an API key in Jellyfin under Dashboard → API Keys.",
+        "data": {
+          "url": "Server URL",
+          "api_key": "API key",
+          "name": "Name"
+        },
+        "data_description": {
+          "url": "Base URL including protocol and port, for example http://192.168.1.10:8096",
+          "api_key": "API key from the Jellyfin dashboard",
+          "name": "Optional display name for this server"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate Jellyfin",
+        "description": "The API key for {name} ({url}) is no longer valid. Enter a new API key.",
+        "data": {
+          "api_key": "API key"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to the Jellyfin server",
+      "invalid_auth": "Invalid API key",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This Jellyfin server is already configured",
+      "reauth_successful": "Reauthentication successful",
+      "wrong_account": "The API key belongs to a different Jellyfin server"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "server_version": { "name": "Server version" },
+      "active_sessions": { "name": "Active sessions" },
+      "watching": { "name": "Watching" },
+      "transcoding": { "name": "Transcoding" },
+      "movies": { "name": "Movies" },
+      "series": { "name": "Series" },
+      "episodes": { "name": "Episodes" },
+      "songs": { "name": "Songs" },
+      "albums": { "name": "Albums" },
+      "artists": { "name": "Artists" },
+      "users": { "name": "Users" },
+      "libraries": { "name": "Libraries" }
+    },
+    "binary_sensor": {
+      "server_online": { "name": "Server online" },
+      "someone_watching": { "name": "Someone watching" }
+    },
+    "button": {
+      "scan_libraries": { "name": "Scan libraries" }
+    }
+  }
+}

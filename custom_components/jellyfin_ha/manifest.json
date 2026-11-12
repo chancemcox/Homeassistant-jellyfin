@@ -1,0 +1,12 @@
+{
+  "domain": "jellyfin_ha",
+  "name": "Jellyfin",
+  "codeowners": ["@chancemcox"],
+  "config_flow": true,
+  "documentation": "https://github.com/chancemcox/Homeassistant-jellyfin",
+  "integration_type": "service",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/chancemcox/Homeassistant-jellyfin/issues",
+  "requirements": [],
+  "version": "1.0.1"
+}
