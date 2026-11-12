@@ -13,6 +13,7 @@ from .api import (
     JellyfinApiError,
     JellyfinAuthError,
     JellyfinConnectionError,
+    normalize_base_url,
 )
 from .const import CONF_API_KEY, DEFAULT_NAME, DOMAIN, PLATFORMS
 from .coordinator import JellyfinConfigEntry, JellyfinDataUpdateCoordinator
@@ -21,9 +22,15 @@ from .coordinator import JellyfinConfigEntry, JellyfinDataUpdateCoordinator
 async def async_setup_entry(hass: HomeAssistant, entry: JellyfinConfigEntry) -> bool:
     """Set up Jellyfin from a config entry."""
     session = async_get_clientsession(hass)
+    host = normalize_base_url(entry.data[CONF_URL])
+    if host != entry.data[CONF_URL]:
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, CONF_URL: host}
+        )
+
     api = JellyfinApiClient(
         session=session,
-        host=entry.data[CONF_URL],
+        host=host,
         api_key=entry.data[CONF_API_KEY],
         device_id=entry.data.get("device_id"),
     )
@@ -33,7 +40,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: JellyfinConfigEntry) -> 
     except JellyfinAuthError as err:
         raise ConfigEntryAuthFailed("Invalid Jellyfin API key") from err
     except (JellyfinConnectionError, JellyfinApiError) as err:
-        # Transient HTTP failures (e.g. 503) should retry setup.
+        # Transient HTTP failures (e.g. 503) or closed port should retry setup.
         raise ConfigEntryNotReady(str(err)) from err
 
     coordinator = JellyfinDataUpdateCoordinator(hass, entry, api, system_info)

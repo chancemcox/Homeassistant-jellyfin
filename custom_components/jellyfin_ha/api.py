@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
@@ -13,6 +15,9 @@ _LOGGER = logging.getLogger(__name__)
 TIMEOUT = ClientTimeout(total=15)
 CLIENT_NAME = "Home Assistant"
 CLIENT_VERSION = "1.0.0"
+DEFAULT_HTTP_PORT = 8096
+DEFAULT_HTTPS_PORT = 443
+PORT_CONNECT_TIMEOUT = 5.0
 
 
 class JellyfinApiError(Exception):
@@ -27,6 +32,42 @@ class JellyfinConnectionError(JellyfinApiError):
     """Raised when the server cannot be reached."""
 
 
+def normalize_base_url(url: str) -> str:
+    """Normalize a Jellyfin base URL and default HTTP to port 8096."""
+    cleaned = url.strip().rstrip("/")
+    if "://" not in cleaned:
+        cleaned = f"http://{cleaned}"
+
+    parsed = urlparse(cleaned)
+    scheme = (parsed.scheme or "http").lower()
+    hostname = parsed.hostname
+    if not hostname:
+        raise JellyfinConnectionError(f"Invalid Jellyfin URL: {url}")
+
+    port = parsed.port
+    if port is None:
+        port = DEFAULT_HTTPS_PORT if scheme == "https" else DEFAULT_HTTP_PORT
+
+    netloc = f"{hostname}:{port}"
+    if parsed.username is not None:
+        userinfo = parsed.username
+        if parsed.password is not None:
+            userinfo = f"{userinfo}:{parsed.password}"
+        netloc = f"{userinfo}@{netloc}"
+
+    path = parsed.path.rstrip("/") if parsed.path not in ("", "/") else ""
+    return f"{scheme}://{netloc}{path}"
+
+
+def parse_host_port(url: str) -> tuple[str, int]:
+    """Return hostname and port for a Jellyfin base URL."""
+    normalized = normalize_base_url(url)
+    parsed = urlparse(normalized)
+    assert parsed.hostname is not None
+    assert parsed.port is not None
+    return parsed.hostname, parsed.port
+
+
 class JellyfinApiClient:
     """Async client for the Jellyfin REST API."""
 
@@ -39,14 +80,20 @@ class JellyfinApiClient:
     ) -> None:
         """Initialize the API client."""
         self._session = session
-        self._host = host.rstrip("/")
+        self._host = normalize_base_url(host)
         self._api_key = api_key
         self._device_id = device_id or str(uuid4())
+        self._hostname, self._port = parse_host_port(self._host)
 
     @property
     def host(self) -> str:
         """Return the configured host URL."""
         return self._host
+
+    @property
+    def port(self) -> int:
+        """Return the Jellyfin TCP port."""
+        return self._port
 
     def _headers(self) -> dict[str, str]:
         """Build request headers including Jellyfin auth."""
@@ -107,6 +154,29 @@ class JellyfinApiClient:
         data = await self._request("GET", "/System/Info")
         return data or {}
 
+    async def async_check_port(self) -> None:
+        """Verify the Jellyfin TCP port accepts connections."""
+        try:
+            _reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(self._hostname, self._port),
+                timeout=PORT_CONNECT_TIMEOUT,
+            )
+        except TimeoutError as err:
+            raise JellyfinConnectionError(
+                f"Timed out connecting to Jellyfin at {self._hostname}:{self._port}"
+            ) from err
+        except OSError as err:
+            raise JellyfinConnectionError(
+                f"Cannot connect to Jellyfin at {self._hostname}:{self._port}: {err}"
+            ) from err
+
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:  # noqa: BLE001
+            pass
+        _LOGGER.debug("Jellyfin port open: %s:%s", self._hostname, self._port)
+
     async def get_public_info(self) -> dict[str, Any]:
         """Return public system info (no auth required for reachability)."""
         url = f"{self._host}/System/Info/Public"
@@ -114,11 +184,18 @@ class JellyfinApiClient:
             async with self._session.get(url, timeout=TIMEOUT) as response:
                 if response.status >= 400:
                     raise JellyfinConnectionError(
-                        f"Cannot reach Jellyfin (HTTP {response.status})"
+                        f"Cannot reach Jellyfin at {self._hostname}:{self._port} "
+                        f"(HTTP {response.status})"
                     )
                 return await response.json()
-        except (TimeoutError, ClientError) as err:
-            raise JellyfinConnectionError(f"Cannot reach Jellyfin: {err}") from err
+        except TimeoutError as err:
+            raise JellyfinConnectionError(
+                f"Timed out reaching Jellyfin at {self._hostname}:{self._port}"
+            ) from err
+        except ClientError as err:
+            raise JellyfinConnectionError(
+                f"Cannot reach Jellyfin at {self._hostname}:{self._port}: {err}"
+            ) from err
 
     async def get_sessions(self) -> list[dict[str, Any]]:
         """Return active sessions."""
@@ -217,5 +294,7 @@ class JellyfinApiClient:
         )
 
     async def async_validate(self) -> dict[str, Any]:
-        """Validate credentials and return system info."""
+        """Validate port reachability, API reachability, and credentials."""
+        await self.async_check_port()
+        await self.get_public_info()
         return await self.get_system_info()

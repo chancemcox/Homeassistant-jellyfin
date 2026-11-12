@@ -39,9 +39,12 @@ Monitor library size, active viewers, and playback sessions. Control remote clie
 1. In Jellyfin: **Dashboard** → **API Keys** → create a new key (name it e.g. `Home Assistant`)
 2. In Home Assistant, start the Jellyfin config flow
 3. Enter:
-   - **Server URL** — e.g. `http://192.168.1.10:8096` or `https://jellyfin.example.com`
+   - **Server URL** — e.g. `http://192.168.1.10:8096` or `https://jellyfin.example.com`  
+     (if you omit the port on `http://`, the integration defaults to **8096**)
    - **API key** — the key you created
    - **Name** (optional) — display name
+
+During setup the integration verifies that the Jellyfin TCP port accepts connections, then checks HTTP reachability and the API key. If you see a connection error, confirm Jellyfin is running and that Home Assistant can reach that host:port.
 
 The API key user should have permission to view sessions and libraries. Admin keys can also trigger library scans.
 
@@ -104,10 +107,11 @@ automation:
 
 GitHub Actions runs HACS validation, hassfest, unit tests, and a Docker smoke test that:
 
-1. Starts a mock Jellyfin API
-2. Boots official Home Assistant in Docker with `jellyfin_ha` installed
-3. Loads a pre-seeded config entry against the mock server
-4. Fails if setup errors appear or no entities are created
+1. Starts a mock Jellyfin API on port **8096**
+2. Asserts TCP + HTTP connect to port 8096 from the host and from the HA container
+3. Boots official Home Assistant in Docker with `jellyfin_ha` installed
+4. Loads a pre-seeded config entry against the mock server
+5. Fails if setup errors appear or no entities are created
 
 Run the smoke test locally (requires Docker):
 
