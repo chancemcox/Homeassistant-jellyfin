@@ -192,14 +192,25 @@ docker run -d --name "${HA_NAME}" \
   -p 8123:8123 \
   "${HA_IMAGE}" >/dev/null
 
-echo "==> Waiting for Home Assistant to initialize (timeout ${TIMEOUT_SECS}s)"
+echo "==> Waiting for jellyfin_ha to become ready (timeout ${TIMEOUT_SECS}s)"
+# HA 2024.11 may never emit "Home Assistant initialized" in this minimal
+# config, so treat successful integration setup + port check as readiness.
 deadline=$((SECONDS + TIMEOUT_SECS))
-initialized=0
+ready=0
 while (( SECONDS < deadline )); do
-  if docker logs "${HA_NAME}" 2>&1 | grep -q "Home Assistant initialized"; then
-    initialized=1
-    echo "Home Assistant initialized"
+  logs="$(docker logs "${HA_NAME}" 2>&1 || true)"
+  if echo "${logs}" | grep -q "Jellyfin port open: mock-jellyfin:8096" \
+    && echo "${logs}" | grep -q "Finished fetching jellyfin_ha data" \
+    && echo "${logs}" | grep -q "success: True" \
+    && echo "${logs}" | grep -Eq "Setup of domain jellyfin_ha took|Setting up jellyfin_ha"; then
+    ready=1
+    echo "jellyfin_ha is ready (port 8096 open + first successful poll)"
     break
+  fi
+  if echo "${logs}" | grep -Eq 'ERROR.*(jellyfin_ha|custom_components\.jellyfin_ha)|Setup failed for (custom integration )?jellyfin_ha|Error setting up entry .* for jellyfin_ha'; then
+    echo "::error::jellyfin_ha failed during startup"
+    echo "${logs}" | tail -n 300
+    exit 1
   fi
   if ! docker ps --format '{{.Names}}' | grep -qx "${HA_NAME}"; then
     echo "::error::Home Assistant container exited early"
@@ -209,8 +220,8 @@ while (( SECONDS < deadline )); do
   sleep 3
 done
 
-if [[ "${initialized}" -ne 1 ]]; then
-  echo "::error::Home Assistant did not initialize within ${TIMEOUT_SECS}s"
+if [[ "${ready}" -ne 1 ]]; then
+  echo "::error::jellyfin_ha did not become ready within ${TIMEOUT_SECS}s"
   docker logs "${HA_NAME}" --tail 300 || true
   exit 1
 fi
