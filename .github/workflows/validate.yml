@@ -20,7 +20,7 @@ jobs:
           category: integration
           # Repository description/topics/license are GitHub settings that must be
           # set on the repo after merge; ignore them so PR validation can pass.
-          ignore: description,topics,license
+          ignore: description topics license
 
   hassfest:
     name: Hassfest
