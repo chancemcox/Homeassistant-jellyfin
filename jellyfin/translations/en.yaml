@@ -1,0 +1,4 @@
+configuration: {}
+network:
+  8096/tcp: Web UI and API
+  8920/tcp: HTTPS (optional)

@@ -1,21 +1,35 @@
 # Jellyfin for Home Assistant
 
-HACS-compatible custom integration that connects your Jellyfin media server to Home Assistant.
+This repository includes:
 
-Monitor library size, active viewers, and playback sessions. Control remote clients and trigger library scans.
+1. **Jellyfin Server add-on** — installs and runs Jellyfin on Home Assistant OS (port **8096**)
+2. **HACS integration** (`jellyfin_ha`) — connects Home Assistant to that Jellyfin server
 
-> This is a custom HACS integration (domain: `jellyfin_ha`). It can be used alongside or instead of the built-in Jellyfin integration.
+> The integration does not install Jellyfin by itself. On HA OS, use the add-on below first.
 
-## Features
+## Install Jellyfin Server (Home Assistant OS)
 
-- **Config flow** setup with server URL + API key
-- **Sensors**: server version, active sessions, watching count, transcoding count, movies / series / episodes / songs / albums / artists, users, libraries
-- **Binary sensors**: server online, someone watching
-- **Media players**: one entity per active Jellyfin session with play / pause / stop / seek / volume / next / previous
-- **Button**: scan all libraries
-- **Diagnostics** support for troubleshooting
+1. **Settings → Add-ons → Add-on store**
+2. ⋮ → **Repositories** → add:
+   ```text
+   https://github.com/chancemcox/Homeassistant-jellyfin
+   ```
+3. Install **Jellyfin Server** → **Start**
+4. Open the add-on **Web UI** (or `http://homeassistant.local:8096`)
+5. Finish the Jellyfin setup wizard
+6. **Dashboard → API Keys → New** (name it `Home Assistant`) and copy the key
 
-## Installation
+Put media in HA **Media** (`/media`) or **Share** (`/share`) so Jellyfin can see it.
+
+### Docker Compose (non-HA OS hosts)
+
+```bash
+docker compose up -d
+```
+
+See `docker-compose.yml`.
+
+## Install the Home Assistant integration (HACS)
 
 ### HACS (recommended)
 
@@ -36,10 +50,11 @@ Monitor library size, active viewers, and playback sessions. Control remote clie
 
 ## Configuration
 
-1. In Jellyfin: **Dashboard** → **API Keys** → create a new key (name it e.g. `Home Assistant`)
-2. In Home Assistant, start the Jellyfin config flow
-3. Enter:
-   - **Server URL** — e.g. `http://192.168.1.10:8096` or `https://jellyfin.example.com`  
+1. Make sure Jellyfin Server is running (add-on or Docker)
+2. Create an API key in Jellyfin (**Dashboard → API Keys**)
+3. In Home Assistant, add the **Jellyfin** integration
+4. Enter:
+   - **Server URL** — e.g. `http://127.0.0.1:8096`, `http://homeassistant.local:8096`, or your LAN IP  
      (if you omit the port on `http://`, the integration defaults to **8096**)
    - **API key** — the key you created
    - **Name** (optional) — display name
