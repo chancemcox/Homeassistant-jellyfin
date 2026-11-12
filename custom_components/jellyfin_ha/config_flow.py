@@ -16,6 +16,7 @@ from .api import (
     JellyfinApiClient,
     JellyfinAuthError,
     JellyfinConnectionError,
+    normalize_base_url,
 )
 from .const import CONF_API_KEY, DEFAULT_NAME, DOMAIN
 
@@ -40,12 +41,14 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     """Validate the user input and return info for the config entry."""
     session = async_get_clientsession(hass)
     device_id = data.get("device_id") or str(uuid4())
+    host = normalize_base_url(data[CONF_URL])
     client = JellyfinApiClient(
         session=session,
-        host=data[CONF_URL].rstrip("/"),
+        host=host,
         api_key=data[CONF_API_KEY],
         device_id=device_id,
     )
+    # async_validate checks TCP port (default 8096), HTTP reachability, then auth.
     info = await client.async_validate()
     return {
         "title": data.get(CONF_NAME) or info.get("ServerName") or DEFAULT_NAME,
@@ -53,6 +56,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         "server_name": info.get("ServerName"),
         "version": info.get("Version"),
         "device_id": device_id,
+        "url": host,
     }
 
 
@@ -68,12 +72,11 @@ class JellyfinConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            url = user_input[CONF_URL].strip().rstrip("/")
-            user_input[CONF_URL] = url
-
             try:
+                user_input[CONF_URL] = normalize_base_url(user_input[CONF_URL])
                 info = await validate_input(self.hass, user_input)
-            except JellyfinConnectionError:
+            except JellyfinConnectionError as err:
+                _LOGGER.warning("Jellyfin connection failed: %s", err)
                 errors["base"] = "cannot_connect"
             except JellyfinAuthError:
                 errors["base"] = "invalid_auth"
@@ -87,7 +90,7 @@ class JellyfinConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(
                     title=info["title"],
                     data={
-                        CONF_URL: url,
+                        CONF_URL: info["url"],
                         CONF_API_KEY: user_input[CONF_API_KEY],
                         CONF_NAME: user_input.get(CONF_NAME, DEFAULT_NAME),
                         "device_id": info["device_id"],

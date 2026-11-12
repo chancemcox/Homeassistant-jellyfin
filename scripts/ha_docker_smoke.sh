@@ -10,6 +10,49 @@ HA_NAME="${HA_NAME:-ha-jellyfin-smoke}"
 MOCK_NAME="${MOCK_NAME:-mock-jellyfin}"
 CONFIG_DIR="${CONFIG_DIR:-${ROOT}/.ha-smoke-config}"
 TIMEOUT_SECS="${TIMEOUT_SECS:-300}"
+JELLYFIN_PORT="${JELLYFIN_PORT:-8096}"
+
+assert_port_connects() {
+  local host="$1"
+  local port="$2"
+  local label="$3"
+  echo "==> Testing TCP connect: ${label} (${host}:${port})"
+  if ! timeout 5 bash -c "echo > /dev/tcp/${host}/${port}" 2>/dev/null; then
+    # Fallback when /dev/tcp is unavailable
+    if command -v nc >/dev/null 2>&1; then
+      if ! nc -z -w 5 "${host}" "${port}"; then
+        echo "::error::Port ${port} did not accept connections at ${host} (${label})"
+        return 1
+      fi
+    elif command -v python3 >/dev/null 2>&1; then
+      if ! python3 - "${host}" "${port}" <<'PY'
+import socket, sys
+host, port = sys.argv[1], int(sys.argv[2])
+with socket.create_connection((host, port), timeout=5):
+    pass
+PY
+      then
+        echo "::error::Port ${port} did not accept connections at ${host} (${label})"
+        return 1
+      fi
+    else
+      echo "::error::No TCP probe tool available to test ${host}:${port}"
+      return 1
+    fi
+  fi
+  echo "Port ${port} is open at ${host} (${label})"
+}
+
+assert_jellyfin_http() {
+  local url="$1"
+  local label="$2"
+  echo "==> Testing Jellyfin HTTP on port ${JELLYFIN_PORT}: ${label}"
+  if ! curl -sf --connect-timeout 5 --max-time 10 "${url}" >/dev/null; then
+    echo "::error::Jellyfin HTTP check failed for ${url} (${label})"
+    return 1
+  fi
+  echo "Jellyfin HTTP OK: ${url}"
+}
 
 cleanup() {
   docker rm -f "${HA_NAME}" >/dev/null 2>&1 || true
@@ -109,23 +152,34 @@ JSON
 echo "==> Creating docker network ${NETWORK_NAME}"
 docker network create "${NETWORK_NAME}" >/dev/null
 
-echo "==> Starting mock Jellyfin"
+echo "==> Starting mock Jellyfin (publishes host port ${JELLYFIN_PORT})"
 docker run -d --name "${MOCK_NAME}" \
   --network "${NETWORK_NAME}" \
   --network-alias mock-jellyfin \
+  -p "${JELLYFIN_PORT}:8096" \
   -v "${ROOT}/scripts/mock_jellyfin.py:/mock_jellyfin.py:ro" \
   python:3.12-alpine \
   python /mock_jellyfin.py >/dev/null
 
-echo "==> Waiting for mock Jellyfin"
+echo "==> Waiting for mock Jellyfin on port ${JELLYFIN_PORT}"
+mock_up=0
 for _ in $(seq 1 30); do
   if docker run --rm --network "${NETWORK_NAME}" curlimages/curl:8.10.1 \
       -sf "http://mock-jellyfin:8096/System/Info/Public" >/dev/null; then
-    echo "Mock Jellyfin is up"
+    mock_up=1
+    echo "Mock Jellyfin is up on container network"
     break
   fi
   sleep 1
 done
+if [[ "${mock_up}" -ne 1 ]]; then
+  echo "::error::Mock Jellyfin did not become ready on port 8096"
+  docker logs "${MOCK_NAME}" --tail 100 || true
+  exit 1
+fi
+
+assert_port_connects "127.0.0.1" "${JELLYFIN_PORT}" "host → Jellyfin"
+assert_jellyfin_http "http://127.0.0.1:${JELLYFIN_PORT}/System/Info/Public" "host → Jellyfin HTTP"
 
 echo "==> Pulling Home Assistant image ${HA_IMAGE}"
 docker pull "${HA_IMAGE}"
@@ -160,6 +214,31 @@ if [[ "${initialized}" -ne 1 ]]; then
   docker logs "${HA_NAME}" --tail 300 || true
   exit 1
 fi
+
+echo "==> Verifying Home Assistant can reach Jellyfin on port 8096"
+docker exec "${HA_NAME}" python3 - <<'PY'
+import socket
+import sys
+import urllib.request
+
+host, port = "mock-jellyfin", 8096
+try:
+    with socket.create_connection((host, port), timeout=5):
+        print(f"OK — TCP connect to {host}:{port}")
+except OSError as err:
+    print(f"::error::HA container cannot TCP-connect to {host}:{port}: {err}")
+    sys.exit(1)
+
+try:
+    with urllib.request.urlopen(f"http://{host}:{port}/System/Info/Public", timeout=10) as resp:
+        body = resp.read().decode()
+        if resp.status != 200 or "CI Jellyfin" not in body:
+            raise RuntimeError(f"unexpected response status={resp.status} body={body[:200]!r}")
+        print(f"OK — HTTP reachability to {host}:{port}/System/Info/Public")
+except Exception as err:  # noqa: BLE001
+    print(f"::error::HA container cannot HTTP-reach Jellyfin on {host}:{port}: {err}")
+    sys.exit(1)
+PY
 
 echo "==> Verifying jellyfin_ha modules import inside the container"
 docker exec -e PYTHONPATH=/config "${HA_NAME}" python3 -c '

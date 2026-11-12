@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -24,6 +25,8 @@ api = _load_api_module()
 JellyfinApiClient = api.JellyfinApiClient
 JellyfinAuthError = api.JellyfinAuthError
 JellyfinConnectionError = api.JellyfinConnectionError
+normalize_base_url = api.normalize_base_url
+parse_host_port = api.parse_host_port
 
 
 def test_host_strips_trailing_slash() -> None:
@@ -31,6 +34,19 @@ def test_host_strips_trailing_slash() -> None:
     session = MagicMock()
     client = JellyfinApiClient(session, "http://jellyfin.local:8096/", "token")
     assert client.host == "http://jellyfin.local:8096"
+
+
+def test_normalize_defaults_http_to_8096() -> None:
+    """HTTP URLs without a port should default to Jellyfin's 8096."""
+    assert normalize_base_url("http://192.168.2.101") == "http://192.168.2.101:8096"
+    assert normalize_base_url("192.168.2.101") == "http://192.168.2.101:8096"
+    assert parse_host_port("http://192.168.2.101") == ("192.168.2.101", 8096)
+
+
+def test_normalize_preserves_explicit_port() -> None:
+    """Explicit ports should be kept."""
+    assert normalize_base_url("http://jellyfin.local:8920") == "http://jellyfin.local:8920"
+    assert parse_host_port("https://jellyfin.example") == ("jellyfin.example", 443)
 
 
 @pytest.mark.asyncio
@@ -87,3 +103,51 @@ async def test_get_sessions_parses_json() -> None:
     client = JellyfinApiClient(session, "http://jellyfin.local:8096", "token")
 
     assert await client.get_sessions() == payload
+
+
+@pytest.mark.asyncio
+async def test_check_port_succeeds_when_listening() -> None:
+    """async_check_port should succeed when the TCP port is open."""
+    server = await asyncio.start_server(lambda r, w: w.close(), "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    session = MagicMock()
+    client = JellyfinApiClient(session, f"http://127.0.0.1:{port}", "token")
+
+    try:
+        await client.async_check_port()
+        assert client.port == port
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_check_port_fails_when_closed() -> None:
+    """async_check_port should fail clearly when nothing listens on the port."""
+    # Bind then close to pick a free port that is not listening afterward.
+    probe = await asyncio.start_server(lambda r, w: w.close(), "127.0.0.1", 0)
+    port = probe.sockets[0].getsockname()[1]
+    probe.close()
+    await probe.wait_closed()
+
+    session = MagicMock()
+    client = JellyfinApiClient(session, f"http://127.0.0.1:{port}", "token")
+
+    with pytest.raises(JellyfinConnectionError, match=str(port)):
+        await client.async_check_port()
+
+
+@pytest.mark.asyncio
+async def test_async_validate_checks_port_before_api() -> None:
+    """async_validate should refuse to continue when the port is closed."""
+    probe = await asyncio.start_server(lambda r, w: w.close(), "127.0.0.1", 0)
+    port = probe.sockets[0].getsockname()[1]
+    probe.close()
+    await probe.wait_closed()
+
+    session = MagicMock()
+    client = JellyfinApiClient(session, f"http://127.0.0.1:{port}", "token")
+
+    with pytest.raises(JellyfinConnectionError, match=str(port)):
+        await client.async_validate()
+    session.request.assert_not_called()
