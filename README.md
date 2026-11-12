@@ -100,6 +100,21 @@ automation:
 - Jellyfin Server 10.8+ (tested against current stable API)
 - HACS (for HACS install path)
 
+## Development / CI
+
+GitHub Actions runs HACS validation, hassfest, unit tests, and a Docker smoke test that:
+
+1. Starts a mock Jellyfin API
+2. Boots official Home Assistant in Docker with `jellyfin_ha` installed
+3. Loads a pre-seeded config entry against the mock server
+4. Fails if setup errors appear or no entities are created
+
+Run the smoke test locally (requires Docker):
+
+```bash
+./scripts/ha_docker_smoke.sh
+```
+
 ## Support
 
 - Issues: [GitHub Issues](https://github.com/chancemcox/Homeassistant-jellyfin/issues)
