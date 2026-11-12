@@ -29,6 +29,12 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
     }
 )
 
+STEP_REAUTH_DATA_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_API_KEY): str,
+    }
+)
+
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input and return info for the config entry."""
@@ -91,5 +97,52 @@ class JellyfinConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=STEP_USER_DATA_SCHEMA,
+            errors=errors,
+        )
+
+    async def async_step_reauth(
+        self, entry_data: dict[str, Any]
+    ) -> ConfigFlowResult:
+        """Handle reauthentication when the API key is rejected."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Prompt for a replacement API key and update the existing entry."""
+        errors: dict[str, str] = {}
+        reauth_entry = self._get_reauth_entry()
+
+        if user_input is not None:
+            data = {
+                CONF_URL: reauth_entry.data[CONF_URL],
+                CONF_API_KEY: user_input[CONF_API_KEY],
+                CONF_NAME: reauth_entry.data.get(CONF_NAME, DEFAULT_NAME),
+                "device_id": reauth_entry.data.get("device_id"),
+            }
+            try:
+                info = await validate_input(self.hass, data)
+            except JellyfinConnectionError:
+                errors["base"] = "cannot_connect"
+            except JellyfinAuthError:
+                errors["base"] = "invalid_auth"
+            except Exception:  # noqa: BLE001
+                _LOGGER.exception("Unexpected exception during Jellyfin reauth")
+                errors["base"] = "unknown"
+            else:
+                await self.async_set_unique_id(info["server_id"])
+                self._abort_if_unique_id_mismatch(reason="wrong_account")
+                return self.async_update_reload_and_abort(
+                    reauth_entry,
+                    data_updates={CONF_API_KEY: user_input[CONF_API_KEY]},
+                )
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=STEP_REAUTH_DATA_SCHEMA,
+            description_placeholders={
+                "url": reauth_entry.data.get(CONF_URL, ""),
+                "name": reauth_entry.title,
+            },
             errors=errors,
         )

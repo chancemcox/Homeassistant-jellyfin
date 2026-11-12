@@ -5,13 +5,24 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
-from homeassistant.const import CONF_URL
+from homeassistant.const import CONF_NAME, CONF_URL
 from homeassistant.core import HomeAssistant
 
 from .const import CONF_API_KEY
 from .coordinator import JellyfinConfigEntry
 
-TO_REDACT = {CONF_API_KEY, "AccessToken", "api_key"}
+TO_REDACT = {
+    CONF_API_KEY,
+    CONF_URL,
+    CONF_NAME,
+    "AccessToken",
+    "api_key",
+    "title",
+    "device_id",
+    "id",
+    "name",
+    "library_names",
+}
 
 
 async def async_get_config_entry_diagnostics(
@@ -21,9 +32,9 @@ async def async_get_config_entry_diagnostics(
     coordinator = entry.runtime_data
     data = coordinator.data or {}
 
-    return {
-        "entry": async_redact_data(
-            {
+    return async_redact_data(
+        {
+            "entry": {
                 "title": entry.title,
                 "domain": entry.domain,
                 "data": {
@@ -31,15 +42,15 @@ async def async_get_config_entry_diagnostics(
                     "device_id": entry.data.get("device_id"),
                 },
             },
-            TO_REDACT,
-        ),
-        "server": {
-            "id": coordinator.server_id,
-            "name": coordinator.server_name,
-            "version": coordinator.server_version,
+            "server": {
+                "id": coordinator.server_id,
+                "name": coordinator.server_name,
+                "version": coordinator.server_version,
+            },
+            "stats": data.get("stats"),
+            "item_counts": data.get("item_counts"),
+            "session_count": len(data.get("sessions", {})),
+            "library_count": len(data.get("libraries", [])),
         },
-        "stats": data.get("stats"),
-        "item_counts": data.get("item_counts"),
-        "session_count": len(data.get("sessions", {})),
-        "library_names": [lib.get("Name") for lib in data.get("libraries", [])],
-    }
+        TO_REDACT,
+    )

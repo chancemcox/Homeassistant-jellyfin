@@ -42,6 +42,7 @@ class JellyfinDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.server_id: str = system_info.get("Id", entry.entry_id)
         self.server_name: str = system_info.get("ServerName", "Jellyfin")
         self.server_version: str = system_info.get("Version", "unknown")
+        # Persistent client keys currently represented by media player entities.
         self.session_ids: set[str] = set()
         self.device_ids: set[str] = set()
 
@@ -62,8 +63,10 @@ class JellyfinDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.server_name = system_info.get("ServerName", self.server_name)
         self.server_version = system_info.get("Version", self.server_version)
 
-        # Index sessions by id for media players
+        # Index sessions by a stable client key for media players.
+        # Prefer DeviceId so reconnects reuse the same entity.
         session_map: dict[str, dict[str, Any]] = {}
+        current_device_ids: set[str] = set()
         watching = 0
         transcoding = 0
         for session in sessions:
@@ -73,14 +76,16 @@ class JellyfinDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Skip our own Home Assistant client session
             if session.get("DeviceId") == self.entry.data.get("device_id"):
                 continue
-            session_map[session_id] = session
+            client_key = session.get("DeviceId") or session_id
+            session_map[client_key] = session
+            if session.get("DeviceId"):
+                current_device_ids.add(session["DeviceId"])
             if session.get("NowPlayingItem"):
                 watching += 1
             if session.get("PlayState", {}).get("PlayMethod") == "Transcode":
                 transcoding += 1
-            device_id = session.get("DeviceId")
-            if device_id:
-                self.device_ids.add(device_id)
+
+        self.device_ids = current_device_ids
 
         return {
             "system": system_info,

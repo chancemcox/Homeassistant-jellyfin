@@ -146,7 +146,6 @@ SENSOR_TYPES: tuple[JellyfinSensorEntityDescription, ...] = (
                 {
                     "name": lib.get("Name"),
                     "collection_type": lib.get("CollectionType"),
-                    "locations": lib.get("Locations"),
                 }
                 for lib in data.get("libraries", [])
             ]

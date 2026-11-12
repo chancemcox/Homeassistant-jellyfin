@@ -96,7 +96,7 @@ automation:
 
 ## Requirements
 
-- Home Assistant 2024.1.0 or newer
+- Home Assistant 2024.11.0 or newer
 - Jellyfin Server 10.8+ (tested against current stable API)
 - HACS (for HACS install path)
 

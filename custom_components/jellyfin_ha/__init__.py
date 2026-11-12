@@ -10,6 +10,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import (
     JellyfinApiClient,
+    JellyfinApiError,
     JellyfinAuthError,
     JellyfinConnectionError,
 )
@@ -31,7 +32,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: JellyfinConfigEntry) -> 
         system_info = await api.async_validate()
     except JellyfinAuthError as err:
         raise ConfigEntryAuthFailed("Invalid Jellyfin API key") from err
-    except JellyfinConnectionError as err:
+    except (JellyfinConnectionError, JellyfinApiError) as err:
+        # Transient HTTP failures (e.g. 503) should retry setup.
         raise ConfigEntryNotReady(str(err)) from err
 
     coordinator = JellyfinDataUpdateCoordinator(hass, entry, api, system_info)

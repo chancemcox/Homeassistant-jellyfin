@@ -22,7 +22,9 @@ from .entity import JellyfinEntity
 class JellyfinBinarySensorEntityDescription(BinarySensorEntityDescription):
     """Describes a Jellyfin binary sensor."""
 
-    is_on_fn: Callable[[dict[str, Any]], bool]
+    is_on_fn: Callable[[JellyfinDataUpdateCoordinator], bool]
+    # Connectivity should stay available so automations can see "off".
+    always_available: bool = False
 
 
 BINARY_SENSOR_TYPES: tuple[JellyfinBinarySensorEntityDescription, ...] = (
@@ -30,13 +32,17 @@ BINARY_SENSOR_TYPES: tuple[JellyfinBinarySensorEntityDescription, ...] = (
         key="server_online",
         translation_key="server_online",
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
-        is_on_fn=lambda data: bool(data.get("system")),
+        always_available=True,
+        is_on_fn=lambda coordinator: coordinator.last_update_success,
     ),
     JellyfinBinarySensorEntityDescription(
         key="someone_watching",
         translation_key="someone_watching",
         icon="mdi:play-circle",
-        is_on_fn=lambda data: data.get("stats", {}).get("watching_count", 0) > 0,
+        is_on_fn=lambda coordinator: coordinator.data.get("stats", {}).get(
+            "watching_count", 0
+        )
+        > 0,
     ),
 )
 
@@ -70,6 +76,13 @@ class JellyfinBinarySensor(JellyfinEntity, BinarySensorEntity):
         self._attr_unique_id = f"{coordinator.server_id}_{description.key}"
 
     @property
+    def available(self) -> bool:
+        """Return True if the entity is available."""
+        if self.entity_description.always_available:
+            return True
+        return super().available
+
+    @property
     def is_on(self) -> bool:
         """Return true if the binary sensor is on."""
-        return self.entity_description.is_on_fn(self.coordinator.data)
+        return self.entity_description.is_on_fn(self.coordinator)

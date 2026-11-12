@@ -14,6 +14,13 @@
           "api_key": "API key from the Jellyfin dashboard",
           "name": "Optional display name for this server"
         }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate Jellyfin",
+        "description": "The API key for {name} ({url}) is no longer valid. Enter a new API key.",
+        "data": {
+          "api_key": "API key"
+        }
       }
     },
     "error": {
@@ -22,7 +29,9 @@
       "unknown": "Unexpected error"
     },
     "abort": {
-      "already_configured": "This Jellyfin server is already configured"
+      "already_configured": "This Jellyfin server is already configured",
+      "reauth_successful": "Reauthentication successful",
+      "wrong_account": "The API key belongs to a different Jellyfin server"
     }
   },
   "entity": {
