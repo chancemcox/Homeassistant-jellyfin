@@ -1,0 +1,35 @@
+name: Jellyfin Server
+version: "12.4.0"
+slug: jellyfin
+description: >
+  Installs and runs the official Jellyfin media server on Home Assistant OS.
+  After it starts, open the web UI on port 8096, create an API key, then add
+  the Jellyfin HACS integration to connect Home Assistant.
+url: https://github.com/chancemcox/Homeassistant-jellyfin
+arch:
+  - aarch64
+  - amd64
+init: false
+startup: services
+boot: auto
+webui: http://[HOST]:[PORT:8096]
+ingress: true
+ingress_port: 8096
+panel_icon: mdi:jellyfin
+panel_title: Jellyfin
+ports:
+  8096/tcp: 8096
+  8920/tcp: null
+ports_description:
+  8096/tcp: Jellyfin web UI and API
+  8920/tcp: Optional HTTPS (disabled by default)
+map:
+  - type: media
+    read_only: false
+  - type: share
+    read_only: false
+  - type: addon_config
+    read_only: false
+options: {}
+schema: {}
+host_network: false
