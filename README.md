@@ -24,10 +24,12 @@ Put media in HA **Media** (`/media`) or **Share** (`/share`) so Jellyfin can see
 ### Docker Compose (non-HA OS hosts)
 
 ```bash
+git clone https://github.com/chancemcox/Homeassistant-jellyfin.git
+cd Homeassistant-jellyfin
 docker compose up -d
 ```
 
-See `docker-compose.yml`.
+Uses `docker-compose.yml` in this repository.
 
 ## Install the Home Assistant integration (HACS)
 

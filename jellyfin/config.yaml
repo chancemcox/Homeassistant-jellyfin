@@ -33,4 +33,3 @@ map:
 options: {}
 schema: {}
 host_network: false
-privileged: false
