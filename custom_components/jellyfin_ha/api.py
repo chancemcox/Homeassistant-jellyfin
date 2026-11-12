@@ -14,7 +14,7 @@ _LOGGER = logging.getLogger(__name__)
 
 TIMEOUT = ClientTimeout(total=15)
 CLIENT_NAME = "Home Assistant"
-CLIENT_VERSION = "1.1.0"
+CLIENT_VERSION = "1.2.0"
 DEFAULT_HTTP_PORT = 8096
 DEFAULT_HTTPS_PORT = 443
 PORT_CONNECT_TIMEOUT = 5.0
