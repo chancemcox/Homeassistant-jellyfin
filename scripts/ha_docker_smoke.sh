@@ -192,14 +192,25 @@ docker run -d --name "${HA_NAME}" \
   -p 8123:8123 \
   "${HA_IMAGE}" >/dev/null
 
-echo "==> Waiting for Home Assistant to initialize (timeout ${TIMEOUT_SECS}s)"
+echo "==> Waiting for jellyfin_ha to become ready (timeout ${TIMEOUT_SECS}s)"
+# HA 2024.11 may never emit "Home Assistant initialized" in this minimal
+# config, so treat successful integration setup + port check as readiness.
 deadline=$((SECONDS + TIMEOUT_SECS))
-initialized=0
+ready=0
 while (( SECONDS < deadline )); do
-  if docker logs "${HA_NAME}" 2>&1 | grep -q "Home Assistant initialized"; then
-    initialized=1
-    echo "Home Assistant initialized"
+  logs="$(docker logs "${HA_NAME}" 2>&1 || true)"
+  if echo "${logs}" | grep -q "Jellyfin port open: mock-jellyfin:8096" \
+    && echo "${logs}" | grep -q "Finished fetching jellyfin_ha data" \
+    && echo "${logs}" | grep -q "success: True" \
+    && echo "${logs}" | grep -Eq "Setup of domain jellyfin_ha took|Setting up jellyfin_ha"; then
+    ready=1
+    echo "jellyfin_ha is ready (port 8096 open + first successful poll)"
     break
+  fi
+  if echo "${logs}" | grep -Eq 'ERROR.*(jellyfin_ha|custom_components\.jellyfin_ha)|Setup failed for (custom integration )?jellyfin_ha|Error setting up entry .* for jellyfin_ha'; then
+    echo "::error::jellyfin_ha failed during startup"
+    echo "${logs}" | tail -n 300
+    exit 1
   fi
   if ! docker ps --format '{{.Names}}' | grep -qx "${HA_NAME}"; then
     echo "::error::Home Assistant container exited early"
@@ -209,14 +220,15 @@ while (( SECONDS < deadline )); do
   sleep 3
 done
 
-if [[ "${initialized}" -ne 1 ]]; then
-  echo "::error::Home Assistant did not initialize within ${TIMEOUT_SECS}s"
+if [[ "${ready}" -ne 1 ]]; then
+  echo "::error::jellyfin_ha did not become ready within ${TIMEOUT_SECS}s"
   docker logs "${HA_NAME}" --tail 300 || true
   exit 1
 fi
 
 echo "==> Verifying Home Assistant can reach Jellyfin on port 8096"
-docker exec "${HA_NAME}" python3 - <<'PY'
+# docker exec needs -i so the heredoc reaches python's stdin.
+docker exec -i "${HA_NAME}" python3 - <<'PY'
 import socket
 import sys
 import urllib.request
@@ -224,9 +236,9 @@ import urllib.request
 host, port = "mock-jellyfin", 8096
 try:
     with socket.create_connection((host, port), timeout=5):
-        print(f"OK — TCP connect to {host}:{port}")
+        print(f"OK — TCP connect to {host}:{port}", flush=True)
 except OSError as err:
-    print(f"::error::HA container cannot TCP-connect to {host}:{port}: {err}")
+    print(f"::error::HA container cannot TCP-connect to {host}:{port}: {err}", flush=True)
     sys.exit(1)
 
 try:
@@ -234,9 +246,9 @@ try:
         body = resp.read().decode()
         if resp.status != 200 or "CI Jellyfin" not in body:
             raise RuntimeError(f"unexpected response status={resp.status} body={body[:200]!r}")
-        print(f"OK — HTTP reachability to {host}:{port}/System/Info/Public")
+        print(f"OK — HTTP reachability to {host}:{port}/System/Info/Public", flush=True)
 except Exception as err:  # noqa: BLE001
-    print(f"::error::HA container cannot HTTP-reach Jellyfin on {host}:{port}: {err}")
+    print(f"::error::HA container cannot HTTP-reach Jellyfin on {host}:{port}: {err}", flush=True)
     sys.exit(1)
 PY
 
@@ -249,14 +261,26 @@ print("OK — jellyfin_ha modules import")
 echo "==> Checking setup success in logs"
 logs="$(docker logs "${HA_NAME}" 2>&1)"
 
-if ! echo "${logs}" | grep -Eqi 'Setting up jellyfin_ha|Setup of domain jellyfin_ha|jellyfin_ha\.sensor|Completed setup of jellyfin_ha'; then
-  # Fallback: config entry setup messages vary by HA version.
-  if ! echo "${logs}" | grep -qi 'jellyfin_ha'; then
-    echo "::error::No jellyfin_ha activity found in Home Assistant logs"
+required_log_patterns=(
+  "Jellyfin port open: mock-jellyfin:8096"
+  "Setup of domain jellyfin_ha took"
+  "Finished fetching jellyfin_ha data"
+  "success: True"
+  "Setup of domain binary_sensor took"
+  "Setup of domain button took"
+  "Setup of domain media_player took"
+  "Setup of domain sensor took"
+  "Creating media player for client"
+)
+
+for pattern in "${required_log_patterns[@]}"; do
+  if ! echo "${logs}" | grep -Fq "${pattern}"; then
+    echo "::error::Missing required log evidence: ${pattern}"
     echo "${logs}" | tail -n 300
     exit 1
   fi
-fi
+done
+echo "OK — logs show port 8096 open, platforms loaded, and a media player created"
 
 echo "==> Failing on jellyfin_ha errors / tracebacks"
 if echo "${logs}" | grep -E 'ERROR.*(jellyfin_ha|custom_components\.jellyfin_ha)|Setup failed for (custom integration )?jellyfin_ha|Error setting up entry .* for jellyfin_ha' \
@@ -268,27 +292,14 @@ if echo "${logs}" | grep -E 'ERROR.*(jellyfin_ha|custom_components\.jellyfin_ha)
   exit 1
 fi
 
-# Entity registry is written once entities are created.
-echo "==> Checking that jellyfin_ha entities were created"
+# Entity registry may not flush to disk in this minimal/onboarding-incomplete
+# HA boot, so treat log evidence of entity creation as the hard requirement.
 entity_file="${CONFIG_DIR}/.storage/core.entity_registry"
-deadline=$((SECONDS + 60))
-found_entities=0
-while (( SECONDS < deadline )); do
-  if [[ -f "${entity_file}" ]] && grep -q 'jellyfin_ha' "${entity_file}"; then
-    found_entities=1
-    break
-  fi
-  sleep 2
-done
-
-if [[ "${found_entities}" -ne 1 ]]; then
-  echo "::error::No jellyfin_ha entities found in entity registry"
-  echo "--- entity registry ---"
-  [[ -f "${entity_file}" ]] && cat "${entity_file}" || echo "(missing)"
-  echo "--- HA log (tail 200) ---"
-  docker logs "${HA_NAME}" --tail 200 || true
-  exit 1
+if [[ -f "${entity_file}" ]] && grep -q 'jellyfin_ha' "${entity_file}"; then
+  echo "==> Entity registry contains jellyfin_ha entities"
+  grep -o '"entity_id": "[^"]*jellyfin[^"]*"' "${entity_file}" | head -n 20 || true
+else
+  echo "==> Entity registry not persisted yet; relying on startup log evidence"
 fi
 
 echo "==> Smoke test passed"
-grep -o '"entity_id": "[^"]*jellyfin[^"]*"' "${entity_file}" | head -n 20 || true
