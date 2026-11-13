@@ -10,7 +10,7 @@
           "name": "Name"
         },
         "data_description": {
-          "url": "Base URL including protocol and port, for example http://192.168.1.10:8096",
+          "url": "Use the HA host LAN IP or add-on hostname, for example http://192.168.2.101:8096 — not 127.0.0.1",
           "api_key": "API key from the Jellyfin dashboard",
           "name": "Optional display name for this server"
         }
@@ -24,9 +24,10 @@
       }
     },
     "error": {
-      "cannot_connect": "Unable to connect to Jellyfin. Check that the server is running and port 8096 (or your custom port) is reachable from Home Assistant",
+      "cannot_connect": "Unable to connect to Jellyfin. Confirm the add-on is running and that port 8096 is reachable from Home Assistant",
+      "loopback_unreachable": "Home Assistant could not reach Jellyfin at localhost. On HA OS use the host LAN IP (for example http://192.168.2.101:8096) or the add-on hostname, not 127.0.0.1",
       "invalid_auth": "Invalid API key",
-      "unknown": "Unexpected error"
+      "unknown": "Unknown error occurred"
     },
     "abort": {
       "already_configured": "This Jellyfin server is already configured",

@@ -49,6 +49,14 @@ def test_normalize_preserves_explicit_port() -> None:
     assert parse_host_port("https://jellyfin.example") == ("jellyfin.example", 443)
 
 
+def test_is_loopback_url() -> None:
+    """Detect loopback hosts without rejecting them during normalize."""
+    assert api.is_loopback_url("http://127.0.0.1:8096")
+    assert api.is_loopback_url("http://localhost:8096")
+    assert not api.is_loopback_url("http://192.168.2.101:8096")
+    assert normalize_base_url("http://127.0.0.1:8096") == "http://127.0.0.1:8096"
+
+
 @pytest.mark.asyncio
 async def test_auth_error_on_401() -> None:
     """401 responses should raise JellyfinAuthError."""

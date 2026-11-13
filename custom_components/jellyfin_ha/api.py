@@ -14,7 +14,7 @@ _LOGGER = logging.getLogger(__name__)
 
 TIMEOUT = ClientTimeout(total=15)
 CLIENT_NAME = "Home Assistant"
-CLIENT_VERSION = "1.2.0"
+CLIENT_VERSION = "1.2.1"
 DEFAULT_HTTP_PORT = 8096
 DEFAULT_HTTPS_PORT = 443
 PORT_CONNECT_TIMEOUT = 5.0
@@ -57,6 +57,15 @@ def normalize_base_url(url: str) -> str:
 
     path = parsed.path.rstrip("/") if parsed.path not in ("", "/") else ""
     return f"{scheme}://{netloc}{path}"
+
+
+def is_loopback_url(url: str) -> bool:
+    """Return True when the URL host is loopback (localhost / 127.0.0.1 / ::1)."""
+    cleaned = url.strip()
+    if "://" not in cleaned:
+        cleaned = f"http://{cleaned}"
+    hostname = urlparse(cleaned).hostname
+    return hostname is not None and hostname.lower() in {"localhost", "127.0.0.1", "::1"}
 
 
 def parse_host_port(url: str) -> tuple[str, int]:
