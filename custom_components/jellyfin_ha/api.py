@@ -44,15 +44,6 @@ def normalize_base_url(url: str) -> str:
     if not hostname:
         raise JellyfinConnectionError(f"Invalid Jellyfin URL: {url}")
 
-    # Home Assistant Core runs in its own container. localhost/127.0.0.1 there
-    # is not the HA OS host where the Jellyfin add-on publishes port 8096.
-    if hostname.lower() in {"localhost", "127.0.0.1", "::1"}:
-        raise JellyfinConnectionError(
-            "Do not use localhost or 127.0.0.1. From Home Assistant use the "
-            "host LAN IP (for example http://192.168.2.101:8096) or the add-on "
-            "hostname (for example http://fe27ebb0-jellyfin:8096)."
-        )
-
     port = parsed.port
     if port is None:
         port = DEFAULT_HTTPS_PORT if scheme == "https" else DEFAULT_HTTP_PORT
@@ -66,6 +57,15 @@ def normalize_base_url(url: str) -> str:
 
     path = parsed.path.rstrip("/") if parsed.path not in ("", "/") else ""
     return f"{scheme}://{netloc}{path}"
+
+
+def is_loopback_url(url: str) -> bool:
+    """Return True when the URL host is loopback (localhost / 127.0.0.1 / ::1)."""
+    cleaned = url.strip()
+    if "://" not in cleaned:
+        cleaned = f"http://{cleaned}"
+    hostname = urlparse(cleaned).hostname
+    return hostname is not None and hostname.lower() in {"localhost", "127.0.0.1", "::1"}
 
 
 def parse_host_port(url: str) -> tuple[str, int]:

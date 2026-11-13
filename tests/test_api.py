@@ -49,12 +49,12 @@ def test_normalize_preserves_explicit_port() -> None:
     assert parse_host_port("https://jellyfin.example") == ("jellyfin.example", 443)
 
 
-def test_normalize_rejects_loopback() -> None:
-    """Loopback URLs are unreachable from the Home Assistant container."""
-    with pytest.raises(JellyfinConnectionError, match="localhost|127.0.0.1|LAN IP"):
-        normalize_base_url("http://127.0.0.1:8096")
-    with pytest.raises(JellyfinConnectionError, match="localhost|127.0.0.1|LAN IP"):
-        normalize_base_url("http://localhost:8096")
+def test_is_loopback_url() -> None:
+    """Detect loopback hosts without rejecting them during normalize."""
+    assert api.is_loopback_url("http://127.0.0.1:8096")
+    assert api.is_loopback_url("http://localhost:8096")
+    assert not api.is_loopback_url("http://192.168.2.101:8096")
+    assert normalize_base_url("http://127.0.0.1:8096") == "http://127.0.0.1:8096"
 
 
 @pytest.mark.asyncio
@@ -113,22 +113,13 @@ async def test_get_sessions_parses_json() -> None:
     assert await client.get_sessions() == payload
 
 
-def _client_for_loopback_port(session: MagicMock, port: int) -> JellyfinApiClient:
-    """Build a client that targets a loopback listener (tests only)."""
-    client = JellyfinApiClient(session, "http://192.168.2.101:8096", "token")
-    client._hostname = "127.0.0.1"
-    client._port = port
-    client._host = f"http://127.0.0.1:{port}"
-    return client
-
-
 @pytest.mark.asyncio
 async def test_check_port_succeeds_when_listening() -> None:
     """async_check_port should succeed when the TCP port is open."""
     server = await asyncio.start_server(lambda r, w: w.close(), "127.0.0.1", 0)
     port = server.sockets[0].getsockname()[1]
     session = MagicMock()
-    client = _client_for_loopback_port(session, port)
+    client = JellyfinApiClient(session, f"http://127.0.0.1:{port}", "token")
 
     try:
         await client.async_check_port()
@@ -148,7 +139,7 @@ async def test_check_port_fails_when_closed() -> None:
     await probe.wait_closed()
 
     session = MagicMock()
-    client = _client_for_loopback_port(session, port)
+    client = JellyfinApiClient(session, f"http://127.0.0.1:{port}", "token")
 
     with pytest.raises(JellyfinConnectionError, match=str(port)):
         await client.async_check_port()
@@ -163,7 +154,7 @@ async def test_async_validate_checks_port_before_api() -> None:
     await probe.wait_closed()
 
     session = MagicMock()
-    client = _client_for_loopback_port(session, port)
+    client = JellyfinApiClient(session, f"http://127.0.0.1:{port}", "token")
 
     with pytest.raises(JellyfinConnectionError, match=str(port)):
         await client.async_validate()

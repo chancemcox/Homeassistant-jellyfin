@@ -24,7 +24,8 @@
       }
     },
     "error": {
-      "cannot_connect": "Unable to connect to Jellyfin. Use the host LAN IP (not 127.0.0.1), confirm the add-on is running, and that port 8096 is reachable from Home Assistant",
+      "cannot_connect": "Unable to connect to Jellyfin. Confirm the add-on is running and that port 8096 is reachable from Home Assistant",
+      "loopback_unreachable": "Home Assistant could not reach Jellyfin at localhost. On HA OS use the host LAN IP (for example http://192.168.2.101:8096) or the add-on hostname, not 127.0.0.1",
       "invalid_auth": "Invalid API key",
       "unknown": "Unknown error occurred"
     },

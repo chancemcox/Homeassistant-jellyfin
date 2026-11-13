@@ -17,6 +17,7 @@ from .api import (
     JellyfinApiError,
     JellyfinAuthError,
     JellyfinConnectionError,
+    is_loopback_url,
     normalize_base_url,
 )
 from .const import CONF_API_KEY, DEFAULT_NAME, DOMAIN
@@ -78,12 +79,20 @@ class JellyfinConfigFlow(ConfigFlow, domain=DOMAIN):
                 info = await validate_input(self.hass, user_input)
             except JellyfinConnectionError as err:
                 _LOGGER.warning("Jellyfin connection failed: %s", err)
-                errors["base"] = "cannot_connect"
+                errors["base"] = (
+                    "loopback_unreachable"
+                    if is_loopback_url(user_input[CONF_URL])
+                    else "cannot_connect"
+                )
             except JellyfinAuthError:
                 errors["base"] = "invalid_auth"
             except JellyfinApiError as err:
                 _LOGGER.warning("Jellyfin API error during setup: %s", err)
-                errors["base"] = "cannot_connect"
+                errors["base"] = (
+                    "loopback_unreachable"
+                    if is_loopback_url(user_input[CONF_URL])
+                    else "cannot_connect"
+                )
             except Exception:  # noqa: BLE001
                 _LOGGER.exception("Unexpected exception during Jellyfin setup")
                 errors["base"] = "unknown"
