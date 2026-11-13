@@ -14,7 +14,7 @@ _LOGGER = logging.getLogger(__name__)
 
 TIMEOUT = ClientTimeout(total=15)
 CLIENT_NAME = "Home Assistant"
-CLIENT_VERSION = "1.2.0"
+CLIENT_VERSION = "1.2.1"
 DEFAULT_HTTP_PORT = 8096
 DEFAULT_HTTPS_PORT = 443
 PORT_CONNECT_TIMEOUT = 5.0
@@ -43,6 +43,15 @@ def normalize_base_url(url: str) -> str:
     hostname = parsed.hostname
     if not hostname:
         raise JellyfinConnectionError(f"Invalid Jellyfin URL: {url}")
+
+    # Home Assistant Core runs in its own container. localhost/127.0.0.1 there
+    # is not the HA OS host where the Jellyfin add-on publishes port 8096.
+    if hostname.lower() in {"localhost", "127.0.0.1", "::1"}:
+        raise JellyfinConnectionError(
+            "Do not use localhost or 127.0.0.1. From Home Assistant use the "
+            "host LAN IP (for example http://192.168.2.101:8096) or the add-on "
+            "hostname (for example http://fe27ebb0-jellyfin:8096)."
+        )
 
     port = parsed.port
     if port is None:

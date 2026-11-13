@@ -14,6 +14,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import (
     JellyfinApiClient,
+    JellyfinApiError,
     JellyfinAuthError,
     JellyfinConnectionError,
     normalize_base_url,
@@ -24,7 +25,7 @@ _LOGGER = logging.getLogger(__name__)
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_URL, default="http://jellyfin.local:8096"): str,
+        vol.Required(CONF_URL, default="http://homeassistant.local:8096"): str,
         vol.Required(CONF_API_KEY): str,
         vol.Optional(CONF_NAME, default=DEFAULT_NAME): str,
     }
@@ -80,22 +81,29 @@ class JellyfinConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "cannot_connect"
             except JellyfinAuthError:
                 errors["base"] = "invalid_auth"
+            except JellyfinApiError as err:
+                _LOGGER.warning("Jellyfin API error during setup: %s", err)
+                errors["base"] = "cannot_connect"
             except Exception:  # noqa: BLE001
                 _LOGGER.exception("Unexpected exception during Jellyfin setup")
                 errors["base"] = "unknown"
             else:
-                await self.async_set_unique_id(info["server_id"])
-                self._abort_if_unique_id_configured()
+                server_id = info.get("server_id")
+                if not server_id:
+                    errors["base"] = "cannot_connect"
+                else:
+                    await self.async_set_unique_id(server_id)
+                    self._abort_if_unique_id_configured()
 
-                return self.async_create_entry(
-                    title=info["title"],
-                    data={
-                        CONF_URL: info["url"],
-                        CONF_API_KEY: user_input[CONF_API_KEY],
-                        CONF_NAME: user_input.get(CONF_NAME, DEFAULT_NAME),
-                        "device_id": info["device_id"],
-                    },
-                )
+                    return self.async_create_entry(
+                        title=info["title"],
+                        data={
+                            CONF_URL: info["url"],
+                            CONF_API_KEY: user_input[CONF_API_KEY],
+                            CONF_NAME: user_input.get(CONF_NAME, DEFAULT_NAME),
+                            "device_id": info["device_id"],
+                        },
+                    )
 
         return self.async_show_form(
             step_id="user",
