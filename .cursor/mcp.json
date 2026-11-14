@@ -1,7 +1,12 @@
 {
   "mcpServers": {
     "printify": {
-      "url": "https://apparelis-printify-mcp.chancecox.workers.dev/mcp"
+      "url": "https://apparelis-printify-mcp.chancecox.workers.dev/mcp",
+      "oauth": {
+        "authorizationEndpoint": "https://apparelis-printify-auth.chancecox.workers.dev/authorize",
+        "tokenEndpoint": "https://apparelis-printify-auth.chancecox.workers.dev/oauth/token",
+        "scopes": ["mcp:read", "mcp:write"]
+      }
     }
   }
 }
