@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "printify": {
+      "url": "https://apparelis-printify-mcp.chancecox.workers.dev/mcp"
+    }
+  }
+}
